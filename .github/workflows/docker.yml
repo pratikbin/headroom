@@ -109,7 +109,7 @@ jobs:
             type=semver,pattern={{version}},suffix=${{ matrix.variant != '' && format('-{0}', matrix.variant) || '' }}
             type=semver,pattern={{major}}.{{minor}},suffix=${{ matrix.variant != '' && format('-{0}', matrix.variant) || '' }}
             type=semver,pattern={{major}},suffix=${{ matrix.variant != '' && format('-{0}', matrix.variant) || '' }}
-            type=sha,prefix=${{ matrix.variant != '' && format('{0}-', matrix.variant) || 'sha-' }}
+            type=sha,format=short,prefix=${{ matrix.variant != '' && format('{0}-', matrix.variant) || 'sha-' }}
             type=raw,value=${{ matrix.variant }},enable=${{ matrix.variant != '' }}
             type=raw,value=latest,enable=${{ matrix.variant == '' }}
 
@@ -133,12 +133,16 @@ jobs:
       - name: Sign images with cosign (keyless via Sigstore OIDC)
         env:
           BAKE_META: ${{ steps.bake.outputs.metadata }}
+          COSIGN_EXPERIMENTAL: "1"
         run: |
-          # Extract all pushed image digests from bake metadata and sign each
+          # Extract all pushed image digests from bake metadata and sign each.
+          # Use OCI 1.1 referrers mode so signatures attach as referrers instead of
+          # separate sha256-<digest>.sig tags (which clutter GHCR package versions
+          # and cause the "Latest" indicator to point at a signature artifact).
           echo "$BAKE_META" | jq -r '
             to_entries[].value."containerimage.digest" // empty
           ' | while read -r digest; do
             image="${{ env.REGISTRY }}/${{ steps.image-name.outputs.image_name }}@${digest}"
             echo "Signing ${image}"
-            cosign sign --yes "${image}"
+            cosign sign --yes --registry-referrers-mode=oci-1-1 "${image}"
           done
