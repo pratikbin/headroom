@@ -191,4 +191,12 @@ jobs:
           IMAGE: ${{ env.REGISTRY }}/${{ steps.image-name.outputs.image_name }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          docker buildx imagetools create --tag "${IMAGE}:latest" "${IMAGE}:${VERSION}"
+          # Add a unique annotation so the resulting image index manifest gets
+          # a new digest, which makes GHCR record a fresh package version with
+          # current timestamp (otherwise the existing root manifest is reused
+          # and stays where it was in the version listing).
+          promoted_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          docker buildx imagetools create \
+            --annotation "index:io.headroom.promoted-at=${promoted_at}" \
+            --tag "${IMAGE}:latest" \
+            "${IMAGE}:${VERSION}"
