@@ -134,15 +134,18 @@ jobs:
         env:
           BAKE_META: ${{ steps.bake.outputs.metadata }}
           COSIGN_EXPERIMENTAL: "1"
+          # Push signatures to a separate GHCR package so the main image's
+          # package version list stays clean. GHCR does not implement the OCI 1.1
+          # referrers API, so cosign falls back to the referrers tag schema
+          # (sha256-<digest>); routing those tags into a sibling package keeps
+          # the primary repo's Latest indicator on the actual image.
+          # Verifiers must set COSIGN_REPOSITORY to the same value.
+          COSIGN_REPOSITORY: ${{ env.REGISTRY }}/${{ steps.image-name.outputs.image_name }}-signatures
         run: |
-          # Extract all pushed image digests from bake metadata and sign each.
-          # Use OCI 1.1 referrers mode so signatures attach as referrers instead of
-          # separate sha256-<digest>.sig tags (which clutter GHCR package versions
-          # and cause the "Latest" indicator to point at a signature artifact).
           echo "$BAKE_META" | jq -r '
             to_entries[].value."containerimage.digest" // empty
           ' | while read -r digest; do
             image="${{ env.REGISTRY }}/${{ steps.image-name.outputs.image_name }}@${digest}"
-            echo "Signing ${image}"
+            echo "Signing ${image} (signatures -> ${COSIGN_REPOSITORY})"
             cosign sign --yes --registry-referrers-mode=oci-1-1 "${image}"
           done
