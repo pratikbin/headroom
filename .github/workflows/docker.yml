@@ -111,7 +111,6 @@ jobs:
             type=semver,pattern={{major}},suffix=${{ matrix.variant != '' && format('-{0}', matrix.variant) || '' }}
             type=sha,format=short,prefix=${{ matrix.variant != '' && format('{0}-', matrix.variant) || 'sha-' }}
             type=raw,value=${{ matrix.variant }},enable=${{ matrix.variant != '' }}
-            type=raw,value=latest,enable=${{ matrix.variant == '' }}
 
       - name: Build and push variant (bake)
         id: bake
@@ -149,3 +148,47 @@ jobs:
             echo "Signing ${image} (signatures -> ${COSIGN_REPOSITORY})"
             cosign sign --yes "${image}"
           done
+
+  promote-latest:
+    # Re-push the :latest tag pointing at the root variant *after* every
+    # variant matrix job has finished, so GHCR's package version listing
+    # (sorted by created_at) shows the root image with :latest at the top
+    # instead of whichever variant happened to finish last.
+    needs: docker-variant-tags
+    runs-on: ubuntu-latest
+    steps:
+      - name: Normalize image name
+        id: image-name
+        run: |
+          image_name="$(printf '%s' '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
+          printf 'image_name=%s\n' "$image_name" >> "$GITHUB_OUTPUT"
+
+      - name: Determine image version
+        id: version
+        env:
+          MANUAL_VERSION: ${{ inputs.version || github.event.inputs.version }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version="${MANUAL_VERSION#v}"
+          if [ -z "$version" ] && [ -n "$RELEASE_TAG" ]; then
+            version="${RELEASE_TAG#v}"
+          fi
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Re-tag root image as :latest
+        if: steps.version.outputs.version != ''
+        env:
+          IMAGE: ${{ env.REGISTRY }}/${{ steps.image-name.outputs.image_name }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          docker buildx imagetools create --tag "${IMAGE}:latest" "${IMAGE}:${VERSION}"
