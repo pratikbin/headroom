@@ -135,8 +135,11 @@ jobs:
             runtime-code-slim
             runtime-code-slim-nonroot
           push: true
+          # Bake `--set` uses singular `platform` (not `platforms` like the
+          # HCL field). All other keys (tags/output/cache-from/cache-to)
+          # match between HCL and `--set`.
           set: |
-            *.platforms=${{ matrix.platform }}
+            *.platform=${{ matrix.platform }}
             *.tags=${{ env.REGISTRY }}/${{ needs.setup.outputs.image_name }}
             *.output=type=image,push-by-digest=true,name-canonical=true,push=true
             *.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ needs.setup.outputs.image_name }}-buildcache:${{ matrix.arch }}
