@@ -289,7 +289,8 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v4
+        # cosign-installer does not publish a floating `v4` tag; pin minor.
+        uses: sigstore/cosign-installer@v4.1.1
 
       - name: Sign manifest with cosign
         env:
